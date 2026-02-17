@@ -70,6 +70,7 @@ public class GamePanel extends JPanel implements Runnable
 		gameThread.start();
 	}
 
+	
 	@Override
 	public void run() 							// boucle qui est effectué dès le démarrage du thread 
 	{
