@@ -1,27 +1,28 @@
 package projetCROMBEZ;
 
 import javax.swing.JFrame;
+import javax.swing.SwingUtilities;
 
 /**
- * Singleton centralisant tous les paramètres du jeu.
+ * Singleton centralisant tous les parametres du jeu.
  * Accessible depuis n'importe quelle classe via GameSettings.getInstance().
  *
  * Contient :
- *  - La difficulté choisie par le joueur
- *  - L'affichage ou non de la portée du joueur
- *  - Le mode plein écran
- *  - Une référence à  la JFrame pour le redimensionnement
+ *  - La difficulte choisie par le joueur
+ *  - L'affichage ou non de la portee du joueur
+ *  - Le mode plein ecran
+ *  - Des references a la JFrame et au GamePanel pour le toggle plein ecran
  */
 public class GameSettings {
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Singleton
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
     /** Instance unique (pattern Singleton). */
     private static GameSettings instance;
 
-    /** Retourne l'instance unique, la crÃ©e si elle n'existe pas encore. */
+    /** Retourne l'instance unique, la cree si elle n'existe pas encore. */
     public static GameSettings getInstance() {
         if (instance == null) {
             instance = new GameSettings();
@@ -29,107 +30,133 @@ public class GameSettings {
         return instance;
     }
 
-    // -------------------------------------------------------------------------
-    // Paramètres
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // Parametres
+    // =========================================================================
 
-    /** Difficulté sélectionnée par le joueur (par défaut : Normal). */
+    /** Difficulte selectionnee par le joueur (par defaut : Normal). */
     private DifficultyLevel difficulty = DifficultyLevel.NORMAL;
 
-    /** Afficher ou masquer le cercle de portée autour du joueur. */
+    /** Afficher ou masquer le cercle de portee autour du joueur. */
     private boolean showPlayerRange = true;
 
-    /** Indique si le jeu est en mode plein écran. */
+    /** Indique si le jeu est actuellement en mode plein ecran. */
     private boolean fullscreen = false;
 
-    /** Référence a  la fenetre principale pour gérer le plein écran. */
+    // =========================================================================
+    // References externes
+    // =========================================================================
+
+    /**
+     * Reference a la fenetre principale.
+     * Doit etre fournie via setWindow() dans Main avant tout toggle.
+     */
     private JFrame window;
 
-    // -------------------------------------------------------------------------
-    // Constructeur privé (Singleton)
-    // -------------------------------------------------------------------------
+    /**
+     * Reference au GamePanel.
+     *
+     */
+    private GamePanel gamePanel;
+
+    // =========================================================================
+    // Constructeur prive (Singleton)
+    // =========================================================================
 
     private GameSettings() {}
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Getters / Setters
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
-    public DifficultyLevel getDifficulty() { return difficulty; }
-    public void setDifficulty(DifficultyLevel d) { this.difficulty = d; }
+    public DifficultyLevel getDifficulty()        { return difficulty; }
+    public void setDifficulty(DifficultyLevel d)  { this.difficulty = d; }
 
-    public boolean isShowPlayerRange() { return showPlayerRange; }
-    public void setShowPlayerRange(boolean show) { this.showPlayerRange = show; }
+    public boolean isShowPlayerRange()            { return showPlayerRange; }
+    public void setShowPlayerRange(boolean show)  { this.showPlayerRange = show; }
 
-    public boolean isFullscreen() { return fullscreen; }
+    public boolean isFullscreen()                 { return fullscreen; }
 
-    /** Enregistre la JFrame pour pouvoir l'utiliser lors du toggle plein écran. */
-    public void setWindow(JFrame window) { this.window = window; }
+    /** Enregistre la JFrame. A appeler une fois dans Main. */
+    public void setWindow(JFrame w)        { this.window    = w; }
 
-    // -------------------------------------------------------------------------
-    // Multiplicateurs de difficulté (utilisés par EnemyManager)
-    // -------------------------------------------------------------------------
+    /** Enregistre le GamePanel. A appeler une fois dans Main. */
+    public void setGamePanel(GamePanel gp) { this.gamePanel = gp; }
+
+    // =========================================================================
+    // Multiplicateurs de difficulte (utilises par EnemyManager)
+    // =========================================================================
 
     /**
-     * Retourne le multiplicateur de points de vie ennemis selon la difficulté.
-     * EASY  0.7x | NORMAL  1.0x | HARD 1.5x
+     * Multiplicateur de HP des ennemis selon la difficulte.
+     * EASY -> 0.7x | NORMAL -> 1.0x | HARD -> 1.5x
      */
     public float getHpMultiplier() {
         switch (difficulty) {
-            case EASY:   return 0.7f;
-            case HARD:   return 1.5f;
-            default:     return 1.0f;
+            case EASY:  return 0.7f;
+            case HARD:  return 1.5f;
+            default:    return 1.0f;
         }
     }
 
     /**
-     * Retourne le multiplicateur de dégats ennemis.
-     * EASY  0.6x | NORMAL  1.0x | HARD  1.4x
+     * Multiplicateur de degats des ennemis.
+     * EASY -> 0.6x | NORMAL -> 1.0x | HARD -> 1.4x
      */
     public float getDamageMultiplier() {
         switch (difficulty) {
-            case EASY:   return 0.6f;
-            case HARD:   return 1.4f;
-            default:     return 1.0f;
+            case EASY:  return 0.6f;
+            case HARD:  return 1.4f;
+            default:    return 1.0f;
         }
     }
 
     /**
-     * Retourne le nombre d'ennemis maximum par vague selon la difficulté.
-     * (Multiplie le nombre de base calculé dans EnemyManager)
-     * EASY  0.6x | NORMAL  1.0x | HARD  1.5x
+     * Multiplicateur du nombre d'ennemis par vague.
+     * EASY -> 0.6x | NORMAL -> 1.0x | HARD -> 1.5x
      */
     public float getWaveSizeMultiplier() {
         switch (difficulty) {
-            case EASY:   return 0.6f;
-            case HARD:   return 1.5f;
-            default:     return 1.0f;
+            case EASY:  return 0.6f;
+            case HARD:  return 1.5f;
+            default:    return 1.0f;
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Plein écran
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // Plein ecran
+    // =========================================================================
 
     /**
-     * Bascule entre le mode plein écran et le mode fenétré.
-     * Nécessite que setWindow() ait été appelé au préalable.
+     * Bascule entre mode plein ecran et mode fenetre.
+     *
      */
     public void toggleFullscreen() {
         if (window == null) return;
 
         fullscreen = !fullscreen;
 
-        // On dispose et recrée la fenêtre en mode exclusif
+        // Obligatoire avant setUndecorated sur une fenetre deja visible
         window.dispose();
+
         if (fullscreen) {
             window.setUndecorated(true);
             window.setExtendedState(JFrame.MAXIMIZED_BOTH);
         } else {
             window.setUndecorated(false);
             window.setExtendedState(JFrame.NORMAL);
+            // Reajuste la taille de la fenetre a la taille preferee du GamePanel
+            window.pack();
+            window.setLocationRelativeTo(null);
         }
+
         window.setVisible(true);
-        window.requestFocus();
+
+        // Redonner le focus clavier au GamePanel apres que la fenetre
+        // soit reellement rendue et dans un etat focusable.
+        // invokeLater garantit que cet appel se fait APRES le repaint initial.
+        if (gamePanel != null) {
+            SwingUtilities.invokeLater(() -> gamePanel.requestFocusInWindow());
+        }
     }
 }

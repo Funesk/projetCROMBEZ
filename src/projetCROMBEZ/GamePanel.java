@@ -1,7 +1,8 @@
 package projetCROMBEZ;
 
 import java.awt.*;
-import java.awt.GraphicsEnvironment;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -9,36 +10,48 @@ import java.util.List;
 import javax.swing.JPanel;
 
 /**
- * Panneau de jeu principal au coeur de l'application.
+ * Panneau de jeu principal - coeur de l'application.
  *
- * Responsabilités :
- *  - Contenir la boucle de jeu 
- *  - Gérer les transitions entre les états via {@link GameState}.
- *  - Déléguer la mise  à jour et le rendu à  chaque sous-système.
- *  - Réinitialiser la partie  à la demande.
+ * Responsabilites :
+ *  - Contenir la boucle de jeu (pattern game loop a delta-time).
+ *  - Gerer les transitions entre les etats via GameState.
+ *  - Deleguer la mise a jour et le rendu a chaque sous-systeme.
+ *  - Reinitialiser la partie a la demande.
  *
- * états gérés :
- *  MENU        MenuScreen
- *  DIFFICULTY  DifficultyScreen
- *  PLAYING     Player, EnemyManager, Projectile (logique de jeu)
- *  PAUSED      PauseScreen (par-dessus le jeu figÃ©)
- *  OPTIONS    OptionsScreen
- *  GAME_OVER   Overlay game over
- *  VICTORY     Overlay victoire
+ * --- Architecture evenements souris (IMPORTANT) ---
+ * GamePanel possede UN SEUL MouseAdapter pour tous les clics et mouvements.
+ * Ce dispatcher central lit gameState au moment ou l'evenement ENTRE dans
+ * le handler, puis appelle handleClick() / handleHover() sur le bon ecran.
+ *
+ * POURQUOI c'est important :
+ * Auparavant, chaque ecran enregistrait son propre MouseListener sur ce panel.
+ * Quand un ecran (ex: OptionsScreen) changeait gameState dans son listener,
+ * le listener suivant (ex: PauseScreen) voyait le NOUVEL etat et reagissait
+ * par erreur. Exemple du bug corrige :
+ *   1. Clic sur "Retour" dans OptionsScreen (gameState = OPTIONS)
+ *   2. OptionsScreen.listener : OPTIONS -> change gameState a PAUSED
+ *   3. PauseScreen.listener   : voit PAUSED, le clic coincide avec
+ *      "Menu principal" -> change gameState a MENU (bug !)
+ *
+ * Avec le dispatcher central :
+ *   - gameState est lu UNE SEULE FOIS au debut du handler.
+ *   - Seul l'ecran correspondant a cet etat recoit l'evenement.
+ *   - Les changements de gameState durant le traitement n'affectent pas
+ *     le dispatch de ce meme evenement.
  */
 public class GamePanel extends JPanel implements Runnable {
 
     // =========================================================================
-    // ParamÃ¨tres de la fenêtre
+    // Parametres de la fenetre
     // =========================================================================
 
-    /** Taille originale d'une tuile avant mise à  l'échelle (px). */
+    /** Taille originale d'une tuile avant mise a l'echelle (px). */
     int originalTileSize = 16;
 
-    /** Facteur de mise à  l'échelle */
+    /** Facteur de mise a l'echelle. */
     int scale = 2;
 
-    /** Taille réelle des tuiles en pixels (32px). */
+    /** Taille reelle des tuiles en pixels (32px). */
     int tileSize = originalTileSize * scale;
 
     /** Nombre de tuiles sur l'axe horizontal. */
@@ -47,41 +60,44 @@ public class GamePanel extends JPanel implements Runnable {
     /** Nombre de tuiles sur l'axe vertical. */
     int screenRow = 26;
 
-    /** Largeur de l'écran de jeu en pixels (1216). */
+    /** Largeur de l'ecran de jeu en pixels (1216). */
     int screenWidth  = tileSize * screenCol;
 
-    /** Hauteur de l'écran de jeu en pixels (832). */
+    /** Hauteur de l'ecran de jeu en pixels (832). */
     int screenHeight = tileSize * screenRow;
 
-    /** Fréquence d'affichage cible (images par seconde). */
+    /** Frequence d'affichage cible (images par seconde). */
     int FPS = 60;
 
-    /** FPS mesuré en temps réel (affiché à l'écran). */
+    /** FPS mesure en temps reel. */
     int currentFPS = 0;
 
     // =========================================================================
-    // Police de caractères
+    // Police
     // =========================================================================
 
-    /** Police personnalisée */
+    /** Police personnalisee (null si "font/Cubic.ttf" est introuvable). */
     Font gameFont;
 
+    // =========================================================================
+    // Systemes d'entree
+    // =========================================================================
 
     /** Thread de la boucle de jeu. */
     Thread gameThread;
 
-    /** Gestionnaire des entrées clavier. */
+    /** Gestionnaire des entrees clavier. */
     KeyHandler keyH = new KeyHandler();
 
     // =========================================================================
-    // état du jeu
+    // Etat du jeu
     // =========================================================================
 
-    /** état actuel du jeu (MENU, PLAYING, PAUSED, etc.). */
+    /** Etat actuel du jeu. */
     public GameState gameState = GameState.MENU;
 
     // =========================================================================
-    // Systèmes de jeu
+    // Systemes de jeu
     // =========================================================================
 
     /** Instance du joueur. */
@@ -90,33 +106,33 @@ public class GamePanel extends JPanel implements Runnable {
     /** Gestionnaire des ennemis et des vagues. */
     public EnemyManager enemyManager;
 
-    /** Liste partagée de tous les projectiles actifs. */
+    /** Liste partagee de tous les projectiles actifs. */
     public List<Projectile> projectiles = new ArrayList<>();
 
     // =========================================================================
-    // écrans / menus
+    // Ecrans / menus
     // =========================================================================
 
-    /** écran du menu principal. */
+    /** Ecran du menu principal. */
     MenuScreen menuScreen;
 
-    /** écran de sélection de la difficulté. */
+    /** Ecran de selection de la difficulte. */
     DifficultyScreen difficultyScreen;
 
     /** Menu pause (overlay sur le jeu). */
     PauseScreen pauseScreen;
 
-    /** écran des options. */
+    /** Ecran des options. */
     public OptionsScreen optionsScreen;
 
     // =========================================================================
-    // Score et temps de survie
+    // Score et temps
     // =========================================================================
 
-    /** Score accumulé (10 points par ennemi tué). */
+    /** Score accumule (10 points par ennemi tue). */
     int score = 0;
 
-    /** Nombre de frames écoulées depuis le début de la partie ( conversion en secondes). */
+    /** Frames ecoulees depuis le debut de la partie. */
     int survivalTicks = 0;
 
     // =========================================================================
@@ -124,39 +140,126 @@ public class GamePanel extends JPanel implements Runnable {
     // =========================================================================
 
     /**
-     * Initialise le panneau de jeu, charge la police, instancie tous les sous-systèmes.
-     * L'ordre d'instanciation est important : les listeners souris des écrans
-     * s'accumulent sur ce panel, donc l'écran actif filtre selon gameState.
+     * Initialise le panneau, charge la police et instancie tous les sous-systemes.
+     *
+     * Un seul MouseAdapter est enregistre sur ce panneau. Il dispatche
+     * les evenements souris vers le bon ecran selon gameState.
+     * Tous les ecrans (MenuScreen, PauseScreen...) exposent des methodes
+     * handleClick() / handleHover() et N'enregistrent PLUS de listeners.
      */
     public GamePanel() {
         this.setPreferredSize(new Dimension(screenWidth, screenHeight));
         this.setBackground(Color.black);
-        this.setDoubleBuffered(true);    // réduit les scintillements
+        this.setDoubleBuffered(true);
         this.addKeyListener(keyH);
         this.setFocusable(true);
         this.requestFocusInWindow();
 
-        // --- Chargement de la police personnalisée ---
+        // =====================================================================
+        // DISPATCHER CENTRAL UNIQUE
+        // Un seul listener pour toute la souris.
+        // gameState est capture une fois par evenement, ce qui garantit
+        // qu'un seul ecran recoit chaque evenement.
+        // =====================================================================
+        this.addMouseAdapter();
+
+        // Police personnalisee (optionnel)
         try {
             Font customFont = Font.createFont(
                     Font.TRUETYPE_FONT,
                     new File("font/BlueWinter.ttf")).deriveFont(15f);
-            GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
-            ge.registerFont(customFont);
+            GraphicsEnvironment.getLocalGraphicsEnvironment().registerFont(customFont);
             this.gameFont = customFont;
         } catch (Exception e) {
-            
+            // Secours : Arial est utilise partout en fallback
         }
 
-        // --- Instanciation des systèmes (ordre important pour les listeners) ---
-        player           = new Player(this);
-        enemyManager     = new EnemyManager(this);
+        // Systemes de jeu
+        player       = new Player(this);
+        enemyManager = new EnemyManager(this);
 
-        // Les écrans enregistrent leurs propres listeners souris
+        // Ecrans (n'enregistrent plus de listeners)
         menuScreen       = new MenuScreen(this);
         difficultyScreen = new DifficultyScreen(this);
         optionsScreen    = new OptionsScreen(this, GameState.MENU);
         pauseScreen      = new PauseScreen(this);
+    }
+
+    /**
+     * Cree et enregistre le MouseAdapter central unique.
+     *
+     * mousePressed : restaure le focus clavier (fait avant tout dispatch).
+     * mouseReleased : dispatch vers le bon ecran selon gameState.
+     * mouseMoved   : dispatch du hover vers le bon ecran.
+     *
+     * La methode est separee du constructeur pour la lisibilite.
+     */
+    private void addMouseAdapter() {
+        this.addMouseListener(new MouseAdapter() {
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                // Restaure le focus clavier a chaque clic, peu importe l'etat.
+                // Indispensable car les menus captent les clics et font perdre
+                // le focus AWT au GamePanel.
+                requestFocusInWindow();
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                // IMPORTANT : gameState est lu UNE SEULE FOIS ici.
+                // Si un ecran change gameState dans handleClick(),
+                // cela n'affecte pas le dispatch de CET evenement.
+                GameState stateNow = gameState;
+                Point     p        = e.getPoint();
+
+                switch (stateNow) {
+                    case MENU:
+                        menuScreen.handleClick(p);
+                        break;
+                    case DIFFICULTY:
+                        difficultyScreen.handleClick(p);
+                        break;
+                    case OPTIONS:
+                        optionsScreen.handleClick(p);
+                        break;
+                    case PAUSED:
+                        pauseScreen.handleClick(p);
+                        break;
+                    case PLAYING:
+                    case GAME_OVER:
+                    case VICTORY:
+                        // Pas de gestion de clic dans ces etats
+                        break;
+                }
+            }
+        });
+
+        this.addMouseMotionListener(new MouseAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                // Meme logique : dispatch selon l'etat courant.
+                GameState stateNow = gameState;
+                Point     p        = e.getPoint();
+
+                switch (stateNow) {
+                    case MENU:
+                        menuScreen.handleHover(p);
+                        break;
+                    case DIFFICULTY:
+                        difficultyScreen.handleHover(p);
+                        break;
+                    case OPTIONS:
+                        optionsScreen.handleHover(p);
+                        break;
+                    case PAUSED:
+                        pauseScreen.handleHover(p);
+                        break;
+                    default:
+                        break;
+                }
+            }
+        });
     }
 
     // =========================================================================
@@ -164,24 +267,24 @@ public class GamePanel extends JPanel implements Runnable {
     // =========================================================================
 
     /**
-     * Réinitialise tous les systèmes de jeu pour démarrer une nouvelle partie.
-     * Appelé par DifficultyScreen juste avant de passer en PLAYING.
+     * Reinitialise tous les systemes de jeu pour une nouvelle partie.
+     * Appele par DifficultyScreen juste avant de passer en PLAYING.
      */
     public void resetGame() {
         player.reset();
         enemyManager.reset();
         projectiles.clear();
-        score = 0;
+        score         = 0;
         survivalTicks = 0;
     }
 
     // =========================================================================
-    // Démarrage du thread
+    // Demarrage du thread
     // =========================================================================
 
     /**
-     * Crée et démarre le thread de la boucle de jeu.
-     * Appelé une seule fois depuis Main.main().
+     * Cree et demarre le thread de la boucle de jeu.
+     * Appele une seule fois depuis Main.main().
      */
     public void startGameThread() {
         gameThread = new Thread(this);
@@ -193,15 +296,11 @@ public class GamePanel extends JPanel implements Runnable {
     // =========================================================================
 
     /**
-     * Boucle de jeu principale (pattern delta-time).
-     *
-     * Garantit un maximum de {@link #FPS} mises à  jour par seconde, quelle que
-     * soit la vitesse de la machine. L'accumulation de delta permet de
-     * rattraper les frames en retard sans dépasser le taux cible.
+     * Boucle de jeu principale (pattern delta-time a 60 FPS).
      */
     @Override
     public void run() {
-        double drawInterval = 1_000_000_000.0 / FPS; // durée d'un frame en nanosecondes
+        double drawInterval = 1_000_000_000.0 / FPS;
         double delta   = 0;
         long lastTime  = System.nanoTime();
         long timer     = 0;
@@ -214,13 +313,12 @@ public class GamePanel extends JPanel implements Runnable {
             lastTime = currentTime;
 
             if (delta >= 1) {
-                update();   // logique
-                repaint();  // rendu
+                update();
+                repaint();
                 delta--;
                 drawCount++;
             }
 
-            // Calcul du FPS réel (toutes les secondes)
             if (timer >= 1_000_000_000) {
                 currentFPS = drawCount;
                 drawCount  = 0;
@@ -230,42 +328,31 @@ public class GamePanel extends JPanel implements Runnable {
     }
 
     // =========================================================================
-    // Mise à jour
+    // Mise a jour
     // =========================================================================
 
     /**
-     * Dispatche la mise à  jour selon l'état actuel du jeu.
-     * Appelé une fois par frame.
+     * Dispatche la mise a jour selon l'etat courant.
      */
     public void update() {
-        switch (gameState) {
-            case PLAYING:
-                updateGame();
-                break;
 
-            case PAUSED:
-            case MENU:
-            case DIFFICULTY:
-            case OPTIONS:
-            case GAME_OVER:
-            case VICTORY:
-                // Pas de logique de jeu dans ces états
-                // (les menus sont pilotés par les listeners souris)
-                break;
+        if (gameState == GameState.PLAYING) {
+            updateGame();
         }
 
-        // --- Touche ECHAP : bascule pause / reprise (one-shot) ---
+        // ECHAP : bascule pause / reprise (one-shot, consomme immediatement)
         if (keyH.escapeJustPressed) {
-            keyH.escapeJustPressed = false; // consume l'évènement
+            keyH.escapeJustPressed = false;
 
             if (gameState == GameState.PLAYING) {
+                pauseScreen.reset(); // remet l'ecran d'infos a zero
                 gameState = GameState.PAUSED;
             } else if (gameState == GameState.PAUSED) {
                 gameState = GameState.PLAYING;
             }
         }
 
-        // --- ENTREE sur les écrans de fin : retour au menu ---
+        // ENTREE sur ecrans de fin : retour au menu
         if (keyH.enterPressed &&
                 (gameState == GameState.GAME_OVER || gameState == GameState.VICTORY)) {
             gameState = GameState.MENU;
@@ -273,62 +360,43 @@ public class GamePanel extends JPanel implements Runnable {
     }
 
     /**
-     * Logique de jeu exécutée uniquement à l'état PLAYING.
-     * Met à  jour projectiles, ennemis, collisions et joueur.
+     * Logique de jeu (uniquement quand PLAYING).
      */
     private void updateGame() {
         survivalTicks++;
 
-        // --- Nettoyage des projectiles morts ---
         projectiles.removeIf(p -> !p.alive);
 
-        // --- Déplacement de chaque projectile ---
         for (Projectile p : projectiles) {
             p.update(screenWidth, screenHeight);
         }
 
-        // --- Mise à  jour des ennemis (IA, attaques, spawn) ---
         enemyManager.update(player, projectiles);
 
-        // --- Collisions : projectiles du joueur  ennemis ---
+        // Collisions projectiles joueur -> ennemis
         for (Projectile p : projectiles) {
             if (!p.fromPlayer || !p.alive) continue;
-
             for (Enemy e : enemyManager.enemies) {
                 if (!e.alive) continue;
-
                 if (p.getBounds().intersects(e.getBounds())) {
                     e.takeDamage(p.damage);
-                    p.alive = false; // le projectile est consommé
-
-                    if (!e.alive) score += 10; // +10 points par ennemi tué
-                    break; // un projectile ne peut toucher qu'un ennemi
+                    p.alive = false;
+                    if (!e.alive) score += 10;
+                    break;
                 }
             }
         }
 
-        // --- Mise à  jour du joueur (mouvement, attaque auto, collision proj. ennemis) ---
         player.update(keyH, enemyManager.enemies, projectiles);
 
-        // --- Vérification de fin de partie ---
-        if (!player.alive) {
-            gameState = GameState.GAME_OVER;
-        }
-
-        // Le boss vaincu est détecté dans EnemyManager.update()
-        if (enemyManager.bossDefeated) {
-            gameState = GameState.VICTORY;
-        }
+        if (!player.alive)           gameState = GameState.GAME_OVER;
+        if (enemyManager.bossDefeated) gameState = GameState.VICTORY;
     }
 
     // =========================================================================
     // Rendu
     // =========================================================================
 
-    /**
-     * Dispatche le rendu selon l'état actuel.
-     * Appelé par Swing suite à  repaint().
-     */
     @Override
     public void paintComponent(Graphics g) {
         super.paintComponent(g);
@@ -336,40 +404,16 @@ public class GamePanel extends JPanel implements Runnable {
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
         switch (gameState) {
-            case MENU:
-                menuScreen.draw(g2);
-                break;
-
-            case DIFFICULTY:
-                difficultyScreen.draw(g2);
-                break;
-
-            case OPTIONS:
-                optionsScreen.draw(g2);
-                break;
-
-            case PLAYING:
-                drawGame(g2);
-                break;
-
-            case PAUSED:
-                // On dessine d'abord le jeu "figé" en fond, puis l'overlay pause
-                drawGame(g2);
-                pauseScreen.draw(g2);
-                break;
-
-            case GAME_OVER:
-                drawGame(g2);
-                drawEndOverlay(g2, "GAME OVER", new Color(180, 30, 30));
-                break;
-
-            case VICTORY:
-                drawGame(g2);
-                drawEndOverlay(g2, "VICTOIRE !", new Color(50, 180, 80));
-                break;
+            case MENU:       menuScreen.draw(g2);                                    break;
+            case DIFFICULTY: difficultyScreen.draw(g2);                              break;
+            case OPTIONS:    optionsScreen.draw(g2);                                 break;
+            case PLAYING:    drawGame(g2);                                           break;
+            case PAUSED:     drawGame(g2); pauseScreen.draw(g2);                    break;
+            case GAME_OVER:  drawGame(g2); drawEndOverlay(g2, "GAME OVER", new Color(180, 30, 30)); break;
+            case VICTORY:    drawGame(g2); drawEndOverlay(g2, "VICTOIRE !", new Color(50, 180, 80)); break;
         }
 
-        // --- FPS toujours affiché (sauf en menu) ---
+        // Compteur FPS (hors menus de navigation)
         if (gameState != GameState.MENU && gameState != GameState.DIFFICULTY) {
             g2.setColor(Color.yellow);
             g2.setFont(gameFont != null ? gameFont.deriveFont(13f) : new Font("Arial", Font.PLAIN, 13));
@@ -380,95 +424,64 @@ public class GamePanel extends JPanel implements Runnable {
     }
 
     /**
-     * Dessine la scène de jeu (fond, grille, projectiles, ennemis, joueur, score).
-     * Partagé entre PLAYING, PAUSED et les overlays de fin.
-     *
-     * @param g2 Contexte graphique
+     * Dessine la scene de jeu (fond, grille, projectiles, ennemis, joueur, HUD).
      */
     private void drawGame(Graphics2D g2) {
-        // Fond sombre uni
         g2.setColor(new Color(20, 20, 35));
         g2.fillRect(0, 0, screenWidth, screenHeight);
 
-        // Grille
         g2.setColor(new Color(30, 30, 50));
         for (int i = 0; i < screenWidth;  i += tileSize) g2.drawLine(i, 0, i, screenHeight);
         for (int j = 0; j < screenHeight; j += tileSize) g2.drawLine(0, j, screenWidth, j);
 
-        // Projectiles (dessinés avant les entités pour qu'ils passent dessous)
-        for (Projectile p : projectiles) {
-            p.draw(g2);
-        }
+        for (Projectile p : projectiles) p.draw(g2);
 
-        // Ennemis et indicateur de vague
         enemyManager.draw(g2);
-
-        // Joueur (toujours au premier plan)
         player.draw(g2);
 
-        // --- Score et temps de survie ---
         Font scoreFont = gameFont != null ? gameFont.deriveFont(14f) : new Font("Arial", Font.PLAIN, 14);
         g2.setFont(scoreFont);
         g2.setColor(Color.white);
-
         int seconds = survivalTicks / FPS;
         g2.drawString("Score : " + score,              10, 45);
         g2.drawString("Temps : " + formatTime(seconds), 10, 65);
 
-        // --- Indicateur de difficulté ---
         Font diffFont = gameFont != null ? gameFont.deriveFont(12f) : new Font("Arial", Font.PLAIN, 12);
         g2.setFont(diffFont);
         g2.setColor(getDifficultyColor());
-        g2.drawString(GameSettings.getInstance().getDifficulty().getLabel(),
-                      screenWidth - 75, 40);
+        g2.drawString(GameSettings.getInstance().getDifficulty().getLabel(), screenWidth - 75, 40);
     }
 
     /**
-     * Dessine un overlay de fin de partie (game over ou victoire).
-     * Fond semi-transparent + titre + stats + instruction de retour.
-     *
-     * @param g2        Contexte graphique
-     * @param title     Texte principal à  afficher
-     * @param titleColor Couleur du titre
+     * Dessine l'overlay de fin de partie (GAME OVER ou VICTOIRE).
      */
     private void drawEndOverlay(Graphics2D g2, String title, Color titleColor) {
-        // Voile noir semi-transparent
         g2.setColor(new Color(0, 0, 0, 170));
         g2.fillRect(0, 0, screenWidth, screenHeight);
 
-        // --- Titre ---
         Font titleFont = gameFont != null ? gameFont.deriveFont(Font.BOLD, 56f)
                                           : new Font("Arial", Font.BOLD, 56);
         g2.setFont(titleFont);
         FontMetrics fm = g2.getFontMetrics();
-
-        int cx = screenWidth / 2 - fm.stringWidth(title) / 2;
+        int cx = screenWidth  / 2 - fm.stringWidth(title) / 2;
         int cy = screenHeight / 2 - 60;
 
-        // Ombre portée
         g2.setColor(titleColor.darker().darker());
         g2.drawString(title, cx + 4, cy + 4);
-        // Titre principal
         g2.setColor(titleColor);
         g2.drawString(title, cx, cy);
 
-        // --- Stats ---
-        Font statsFont = gameFont != null ? gameFont.deriveFont(20f)
-                                          : new Font("Arial", Font.PLAIN, 20);
+        Font statsFont = gameFont != null ? gameFont.deriveFont(20f) : new Font("Arial", Font.PLAIN, 20);
         g2.setFont(statsFont);
         fm = g2.getFontMetrics();
-
-        int seconds = survivalTicks / FPS;
-        String stats = "Score : " + score + "   |   Temps : " + formatTime(seconds);
+        String stats = "Score : " + score + "   |   Temps : " + formatTime(survivalTicks / FPS);
         g2.setColor(Color.white);
         g2.drawString(stats, screenWidth / 2 - fm.stringWidth(stats) / 2, cy + 60);
 
-        // --- Instruction ---
-        Font hintFont = gameFont != null ? gameFont.deriveFont(15f)
-                                         : new Font("Arial", Font.PLAIN, 15);
+        Font hintFont = gameFont != null ? gameFont.deriveFont(15f) : new Font("Arial", Font.PLAIN, 15);
         g2.setFont(hintFont);
         fm = g2.getFontMetrics();
-        String hint = "Appuie sur ENTRÉE pour revenir au menu";
+        String hint = "Appuie sur ENTREE pour revenir au menu";
         g2.setColor(new Color(180, 180, 180));
         g2.drawString(hint, screenWidth / 2 - fm.stringWidth(hint) / 2, cy + 100);
     }
@@ -477,25 +490,15 @@ public class GamePanel extends JPanel implements Runnable {
     // Utilitaires
     // =========================================================================
 
-    /**
-     * Formate un nombre de secondes en chaine "Xm Ys".
-     *
-     * @param totalSeconds Durée totale en secondes
-     * @return Chaine formatée, ex: "2m 35s"
-     */
     private String formatTime(int totalSeconds) {
         return (totalSeconds / 60) + "m " + (totalSeconds % 60) + "s";
     }
 
-    /**
-     * Retourne la couleur associée à  la difficulté actuelle pour l'indicateur HUD.
-     * Vert = Facile | Jaune = Normal | Rouge = Difficile
-     */
     private Color getDifficultyColor() {
         switch (GameSettings.getInstance().getDifficulty()) {
-            case EASY:   return new Color(80, 200, 80);
-            case HARD:   return new Color(220, 60, 60);
-            default:     return new Color(220, 180, 0);
+            case EASY:  return new Color(80, 200, 80);
+            case HARD:  return new Color(220, 60, 60);
+            default:    return new Color(220, 180, 0);
         }
     }
 }

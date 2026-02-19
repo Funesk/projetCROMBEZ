@@ -1,59 +1,65 @@
 package projetCROMBEZ;
 
 import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 
 /**
- * ecran des options du jeu.
+ * Ecran des options du jeu.
  *
  * Accessible depuis le menu principal ET depuis le menu pause.
- * Retourne à  l'état précédent ({@link #returnState}) quand on clique sur "Retour".
+ * Retourne a l'etat precedent (returnState) quand on clique sur "Retour".
  *
  * Options disponibles :
- *  1. Afficher la portée du joueur (toggle ON/OFF)
- *  2. Plein écran (toggle ON/OFF)
+ *  1. Afficher la portee du joueur (toggle ON/OFF)
+ *  2. Plein ecran (toggle ON/OFF)
+ *
+ * --- Architecture listener ---
+ * Aucun MouseListener n'est enregistre ici. GamePanel appelle
+ * handleClick() et handleHover() UNIQUEMENT quand gameState == OPTIONS.
+ * Cela evite le bug de double-dispatch : quand on retourne de OPTIONS
+ * vers PAUSED, PauseScreen ne recoit pas ce meme clic.
  */
 public class OptionsScreen {
 
-    // -------------------------------------------------------------------------
-    // Références
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // References
+    // =========================================================================
 
-    /** Référence au GamePanel. */
+    /** Reference au GamePanel. */
     private GamePanel gp;
 
     /**
-     * etat vers lequel revenir quand l'utilisateur clique sur "Retour".
-     * MENU si on vient du menu principal, PAUSED si on vient du menu pause.
+     * Etat vers lequel revenir quand l'utilisateur clique sur "Retour".
+     * MENU si on vient du menu principal.
+     * PAUSED si on vient du menu pause.
      */
     private GameState returnState;
 
-    // -------------------------------------------------------------------------
-    // Zones cliquables
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // Boutons
+    // =========================================================================
 
-    /** Bouton toggle pour l'affichage de la portée. */
+    /** Bouton toggle pour l'affichage de la portee. */
     private Rectangle btnRange;
 
-    /** Bouton toggle pour le plein écran. */
+    /** Bouton toggle pour le plein ecran. */
     private Rectangle btnFullscreen;
 
-    /** Bouton pour revenir à  l'état précédent. */
+    /** Bouton pour revenir a l'etat precedent. */
     private Rectangle btnBack;
 
-    /** Index du bouton survolé (-1 = aucun). */
+    /** Index du bouton survole (-1 = aucun). */
     private int hoveredButton = -1;
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Constructeur
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
     /**
-     * Crée l'écran d'options et enregistre les listeners.
+     * Cree l'ecran des options et calcule les positions des boutons.
+     * Aucun MouseListener n'est enregistre ici.
      *
-     * @param gp          Référence au GamePanel
-     * @param returnState etat vers lequel revenir (MENU ou PAUSED)
+     * @param gp          Reference au GamePanel
+     * @param returnState Etat vers lequel revenir (MENU ou PAUSED)
      */
     public OptionsScreen(GamePanel gp, GameState returnState) {
         this.gp          = gp;
@@ -62,108 +68,108 @@ public class OptionsScreen {
         int cx     = gp.screenWidth / 2;
         int startY = 300;
 
-        // Boutons toggle (grands, pour être facilement cliquables)
         btnRange      = new Rectangle(cx - 200, startY,       400, 60);
         btnFullscreen = new Rectangle(cx - 200, startY + 90,  400, 60);
         btnBack       = new Rectangle(cx - 80,  startY + 200, 160, 40);
-
-        // Listener souris : survol
-        gp.addMouseMotionListener(new MouseAdapter() {
-            @Override
-            public void mouseMoved(MouseEvent e) {
-                updateHover(e.getPoint());
-            }
-        });
-
-        // Listener souris : clic
-        gp.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (gp.gameState != GameState.OPTIONS) return;
-
-                Point p = e.getPoint();
-                GameSettings s = GameSettings.getInstance();
-
-                if (btnRange.contains(p)) {
-                    // Inverse l'affichage de la portée
-                    s.setShowPlayerRange(!s.isShowPlayerRange());
-                }
-                if (btnFullscreen.contains(p)) {
-                    // Bascule plein écran / fenêtré
-                    s.toggleFullscreen();
-                }
-                if (btnBack.contains(p)) {
-                    // Retourne à  l'état précédent
-                    gp.gameState = returnState;
-                }
-            }
-        });
     }
 
-    // -------------------------------------------------------------------------
-    // Mise à  jour
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // Setter
+    // =========================================================================
 
     /**
-     * Met à  jour la référence de retour (utile si l'écran est réutilisé
-     * depuis différents contextes).
+     * Met a jour l'etat de retour avant d'afficher l'ecran.
+     * Appele par MenuScreen ou PauseScreen selon le contexte.
      *
-     * @param state Nouvel état de retour
+     * @param state MENU si venant du menu, PAUSED si venant de la pause
      */
     public void setReturnState(GameState state) {
         this.returnState = state;
     }
 
+    // =========================================================================
+    // Gestion des evenements (appeles par GamePanel)
+    // =========================================================================
+
     /**
-     * Met à  jour le bouton survolé en fonction de la position de la souris.
+     * Traite un clic souris sur cet ecran.
+     * Appele par GamePanel UNIQUEMENT quand gameState == OPTIONS.
+     * Garantit qu'aucun autre ecran ne recoit ce meme clic.
+     *
+     * @param p Position du clic en coordonnees ecran
      */
-    private void updateHover(Point p) {
-        if (gp.gameState != GameState.OPTIONS) return;
+    public void handleClick(Point p) {
+        GameSettings s = GameSettings.getInstance();
+
+        if (btnRange.contains(p)) {
+            // Inverse l'affichage de la portee du joueur
+            s.setShowPlayerRange(!s.isShowPlayerRange());
+            return;
+        }
+        if (btnFullscreen.contains(p)) {
+            // Bascule plein ecran / fenetre
+            // Note : toggleFullscreen() appelle requestFocusInWindow() via invokeLater
+            s.toggleFullscreen();
+            return;
+        }
+        if (btnBack.contains(p)) {
+            // Retourne a l'etat precedent (MENU ou PAUSED)
+            // Aucun autre ecran ne recevra ce clic car GamePanel dispatch
+            // selon l'etat courant au moment ou le clic entre dans handleClick.
+            gp.gameState = returnState;
+        }
+    }
+
+    /**
+     * Met a jour le bouton survole.
+     * Appele par GamePanel UNIQUEMENT quand gameState == OPTIONS.
+     *
+     * @param p Position de la souris en coordonnees ecran
+     */
+    public void handleHover(Point p) {
         if      (btnRange.contains(p))      hoveredButton = 0;
         else if (btnFullscreen.contains(p)) hoveredButton = 1;
         else if (btnBack.contains(p))       hoveredButton = 2;
         else                                hoveredButton = -1;
     }
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Rendu
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
     /**
-     * Dessine l'écran des options.
+     * Dessine l'ecran des options.
      *
      * @param g2 Contexte graphique
      */
     public void draw(Graphics2D g2) {
-        // --- Fond ---
+        // Fond degrade
         GradientPaint bg = new GradientPaint(0, 0, new Color(10, 10, 30),
                 0, gp.screenHeight, new Color(20, 10, 50));
         g2.setPaint(bg);
         g2.fillRect(0, 0, gp.screenWidth, gp.screenHeight);
         g2.setPaint(null);
 
-        // --- Titre ---
+        // Titre
         Font titleFont = gp.gameFont != null ? gp.gameFont.deriveFont(Font.BOLD, 38f)
                                              : new Font("Arial", Font.BOLD, 38);
         g2.setFont(titleFont);
         g2.setColor(Color.white);
-        String title = "Options";
         FontMetrics fm = g2.getFontMetrics();
+        String title = "Options";
         g2.drawString(title, gp.screenWidth / 2 - fm.stringWidth(title) / 2, 220);
 
         GameSettings s = GameSettings.getInstance();
 
-        // --- Toggle : portée du joueur ---
+        // Toggle : portee du joueur
         drawToggleButton(g2, btnRange,
-                "Afficher la portée d'attaque",
-                s.isShowPlayerRange(), 0);
+                "Afficher la portee d'attaque", s.isShowPlayerRange(), 0);
 
-        // --- Toggle : plein écran ---
+        // Toggle : plein ecran
         drawToggleButton(g2, btnFullscreen,
-                "Mode plein écran",
-                s.isFullscreen(), 1);
+                "Mode plein ecran", s.isFullscreen(), 1);
 
-        // --- Bouton Retour ---
+        // Bouton Retour
         boolean backHover = (hoveredButton == 2);
         g2.setColor(backHover ? new Color(80, 80, 100) : new Color(40, 40, 60));
         g2.fillRoundRect(btnBack.x, btnBack.y, btnBack.width, btnBack.height, 10, 10);
@@ -177,25 +183,25 @@ public class OptionsScreen {
         g2.setFont(backFont);
         g2.setColor(Color.white);
         fm = g2.getFontMetrics();
-        String back = "Retour";
+        String back = "<- Retour";
         g2.drawString(back, btnBack.x + btnBack.width / 2 - fm.stringWidth(back) / 2,
                       btnBack.y + btnBack.height / 2 + fm.getAscent() / 2 - 2);
     }
 
     /**
-     * Dessine un bouton toggle avec son libellé et son état ON/OFF.
+     * Dessine un bouton toggle avec son libelle et son etat ON/OFF.
      *
-     * @param g2      Contexte graphique
-     * @param btn     Rectangle du bouton
-     * @param label   Texte descriptif de l'option
-     * @param active  true si l'option est activée (ON)
-     * @param index   Index du bouton pour la détection de hover
+     * @param g2     Contexte graphique
+     * @param btn    Rectangle du bouton
+     * @param label  Texte descriptif de l'option
+     * @param active true si l'option est activee (ON)
+     * @param index  Index du bouton pour la detection de hover
      */
     private void drawToggleButton(Graphics2D g2, Rectangle btn, String label,
                                   boolean active, int index) {
         boolean hovered = (hoveredButton == index);
 
-        // Fond du bouton
+        // Fond
         g2.setColor(hovered ? new Color(50, 50, 80) : new Color(30, 30, 55));
         g2.fillRoundRect(btn.x, btn.y, btn.width, btn.height, 14, 14);
 
@@ -205,30 +211,30 @@ public class OptionsScreen {
         g2.drawRoundRect(btn.x, btn.y, btn.width, btn.height, 14, 14);
         g2.setStroke(new BasicStroke(1f));
 
-        // Libellé à  gauche
+        // Libelle
         Font optFont = gp.gameFont != null ? gp.gameFont.deriveFont(18f)
                                            : new Font("Arial", Font.PLAIN, 18);
         g2.setFont(optFont);
         g2.setColor(Color.white);
         g2.drawString(label, btn.x + 20, btn.y + btn.height / 2 + 6);
 
-        // Indicateur ON/OFF   droite
-        int toggleW  = 60;
-        int toggleH  = 30;
-        int toggleX  = btn.x + btn.width - toggleW - 15;
-        int toggleY  = btn.y + (btn.height - toggleH) / 2;
+        // Indicateur ON/OFF a droite
+        int toggleW = 60;
+        int toggleH = 30;
+        int toggleX = btn.x + btn.width - toggleW - 15;
+        int toggleY = btn.y + (btn.height - toggleH) / 2;
 
-        // Fond du toggle
+        // Fond du toggle (vert si ON, rouge si OFF)
         g2.setColor(active ? new Color(50, 180, 80) : new Color(120, 50, 50));
         g2.fillRoundRect(toggleX, toggleY, toggleW, toggleH, toggleH, toggleH);
 
-        // Pastille blanche
+        // Pastille blanche (a droite si ON, a gauche si OFF)
         int knobSize = toggleH - 6;
         int knobX    = active ? toggleX + toggleW - knobSize - 3 : toggleX + 3;
         g2.setColor(Color.white);
         g2.fillOval(knobX, toggleY + 3, knobSize, knobSize);
 
-        // Texte ON/OFF
+        // Texte ON / OFF
         Font toggleFont = gp.gameFont != null ? gp.gameFont.deriveFont(Font.BOLD, 11f)
                                               : new Font("Arial", Font.BOLD, 11);
         g2.setFont(toggleFont);

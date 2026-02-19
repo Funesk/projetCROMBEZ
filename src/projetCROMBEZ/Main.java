@@ -1,40 +1,53 @@
 package projetCROMBEZ;
 
+import java.awt.Color;
+import java.awt.GridBagLayout;
 import javax.swing.JFrame;
 
 /**
- * Point d'entrée de l'application.
+ * Point d'entree de l'application.
  *
- * Crée la fenetre principale (JFrame), y ajoute le GamePanel,
- * puis démarre la boucle de jeu.
+ * Cree la fenetre principale, y ajoute le GamePanel et demarre la boucle de jeu.
  *
- * La référence a la JFrame est transmise a {@link GameSettings} pour
- * permettre le basculement plein écran depuis les options.
+ *
+ * --- Transmission des references ---
+ * La JFrame et le GamePanel sont passes a GameSettings pour permettre
+ * le toggle plein ecran et le retablissement du focus clavier.
  */
 public class Main {
 
     public static void main(String[] args) {
 
-        // --- Création de la fenetre ---
+        // --- Creation de la fenetre ---
         JFrame window = new JFrame();
-        window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE); // fermeture propre
-        window.setResizable(false);                            // taille fixe
+        window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        window.setResizable(false);
         window.setTitle("Survivor V1");
 
-        // --- Création et ajout du panneau de jeu ---
-        GamePanel gamePanel = new GamePanel();
-        window.add(gamePanel);
-        window.pack(); // adapte la taille de la fenétre au panneau
+        // Fond noir visible dans les bandes du letterboxing en plein ecran
+        window.getContentPane().setBackground(Color.black);
 
-        // --- Transmission de la JFrame a  GameSettings ---
-        // Nécessaire pour le toggle plein écran dans les options.
+        // GridBagLayout : centre le GamePanel dans la fenetre meme quand
+        // celle-ci est plus grande que le panneau (mode plein ecran)
+        window.getContentPane().setLayout(new GridBagLayout());
+
+        // --- Creation du GamePanel ---
+        GamePanel gamePanel = new GamePanel();
+
+        // GridBagConstraints par defaut = centrage automatique
+        window.add(gamePanel);
+        window.pack();
+
+        // --- Transmission des references a GameSettings ---
+        // Indispensable pour le toggle plein ecran et la restauration du focus.
         GameSettings.getInstance().setWindow(window);
+        GameSettings.getInstance().setGamePanel(gamePanel);
 
         // --- Positionnement et affichage ---
-        window.setLocationRelativeTo(null); // centré sur l'ecran
+        window.setLocationRelativeTo(null); // centre sur l'ecran
         window.setVisible(true);
 
-        // --- Démarrage de la boucle de jeu ---
+        // --- Demarrage de la boucle de jeu ---
         gamePanel.startGameThread();
     }
 }
