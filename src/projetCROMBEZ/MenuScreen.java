@@ -7,18 +7,19 @@ import java.util.List;
 /**
  * Ecran du menu principal.
  *
- * Premier ecran affiche au lancement du jeu.
  * Boutons disponibles :
- *  1. Jouer        -> ouvre l'ecran de selection de difficulte
- *  2. Options      -> ouvre l'ecran des options (retour au menu)
- *  3. Credits      -> (TODO : a implementer)
- *  4. Quitter      -> ferme l'application
+ *  1. Jouer    -> ouvre l'ecran de selection de difficulte
+ *  2. Options  -> ouvre l'ecran des options (retour MENU)
+ *  3. Infos    -> affiche le panneau d'informations et statistiques (InfoPanel)
+ *  4. Quitter  -> ferme l'application
+ *
+ * --- Gestion du panneau Infos ---
+ * Quand showInfo est true, InfoPanel.draw() est appele par-dessus le menu.
+ * N'importe quel clic ferme le panneau (gere dans handleClick).
  *
  * --- Architecture listener ---
- * Cette classe N'enregistre PLUS de MouseListener directement sur le GamePanel.
- * C'est GamePanel qui centralise tous les evenements souris et appelle
- * handleClick() et handleHover() uniquement quand gameState == MENU.
- * Cela evite les conflits entre les listeners des differents ecrans.
+ * Aucun MouseListener enregistre ici. GamePanel dispatche les evenements
+ * via handleClick() et handleHover() uniquement quand gameState == MENU.
  */
 public class MenuScreen {
 
@@ -26,20 +27,20 @@ public class MenuScreen {
     // References
     // =========================================================================
 
-    /** Reference au GamePanel pour la navigation et les dimensions. */
+    /** Reference au GamePanel. */
     private GamePanel gp;
 
     // =========================================================================
     // Boutons
     // =========================================================================
 
-    /** Liste des rectangles cliquables dans l'ordre des boutons. */
+    /** Zones cliquables des boutons. */
     private List<Rectangle> buttons = new ArrayList<>();
 
     /** Labels affiches sur chaque bouton. */
-    private String[] buttonLabels = { "Jouer", "Options", "Credits", "Quitter" };
+    private String[] buttonLabels = { "Jouer", "Options", "Infos", "Quitter" };
 
-    /** Index du bouton actuellement survole (-1 = aucun). */
+    /** Index du bouton survole (-1 = aucun). */
     private int hoveredButton = -1;
 
     // Dimensions des boutons
@@ -48,20 +49,31 @@ public class MenuScreen {
     private static final int BTN_GAP = 20;
 
     // =========================================================================
+    // Panneau Infos
+    // =========================================================================
+
+    /**
+     * Panneau d'informations partage avec PauseScreen.
+     * Affiche les stats joueur, stats ennemis et composition des vagues.
+     */
+    private InfoPanel infoPanel;
+
+    /** true quand le panneau d'informations est affiche par-dessus le menu. */
+    private boolean showInfo = false;
+
+    // =========================================================================
     // Constructeur
     // =========================================================================
 
     /**
      * Cree le menu et calcule les positions des boutons.
-     * Aucun MouseListener n'est enregistre ici : la gestion des evenements
-     * est centralisee dans GamePanel.
      *
      * @param gp Reference au GamePanel
      */
     public MenuScreen(GamePanel gp) {
-        this.gp = gp;
+        this.gp        = gp;
+        this.infoPanel = new InfoPanel(gp);
 
-        // Calcul des positions de chaque bouton (centres horizontalement)
         int btnX   = gp.screenWidth  / 2 - BTN_W / 2;
         int startY = gp.screenHeight / 2 - 60;
 
@@ -75,27 +87,36 @@ public class MenuScreen {
     // =========================================================================
 
     /**
-     * Traite un clic souris sur cet ecran.
-     * Appele par GamePanel UNIQUEMENT quand gameState == MENU.
+     * Traite un clic.
+     * Si le panneau Infos est ouvert, n'importe quel clic le ferme.
+     * Sinon, dispatch vers le bouton clique.
      *
-     * @param p Position du clic en coordonnees ecran
+     * @param p Position du clic
      */
     public void handleClick(Point p) {
+        // Ferme le panneau d'infos si ouvert
+        if (showInfo) {
+            showInfo = false;
+            return;
+        }
+
         for (int i = 0; i < buttons.size(); i++) {
             if (buttons.get(i).contains(p)) {
                 handleButton(i);
-                return; // un seul bouton par clic
+                return;
             }
         }
     }
 
     /**
-     * Met a jour le bouton survole en fonction de la position de la souris.
-     * Appele par GamePanel UNIQUEMENT quand gameState == MENU.
+     * Met a jour le bouton survole.
+     * Ignore le hover si le panneau Infos est ouvert.
      *
-     * @param p Position de la souris en coordonnees ecran
+     * @param p Position de la souris
      */
     public void handleHover(Point p) {
+        if (showInfo) { hoveredButton = -1; return; }
+
         hoveredButton = -1;
         for (int i = 0; i < buttons.size(); i++) {
             if (buttons.get(i).contains(p)) {
@@ -112,21 +133,21 @@ public class MenuScreen {
     /**
      * Execute l'action correspondant au bouton clique.
      *
-     * @param index Position du bouton dans buttonLabels
+     * @param index Index dans buttonLabels
      */
     private void handleButton(int index) {
         switch (index) {
-            case 0: // Jouer -> selection de difficulte
+            case 0: // Jouer
                 gp.gameState = GameState.DIFFICULTY;
                 break;
 
-            case 1: // Options -> retour au menu apres
+            case 1: // Options
                 gp.optionsScreen.setReturnState(GameState.MENU);
                 gp.gameState = GameState.OPTIONS;
                 break;
 
-            case 2: // Credits (a implementer)
-                // TODO : creer un ecran de credits
+            case 2: // Infos - affiche le panneau par-dessus le menu
+                showInfo = true;
                 break;
 
             case 3: // Quitter
@@ -140,12 +161,13 @@ public class MenuScreen {
     // =========================================================================
 
     /**
-     * Dessine le menu principal : fond degrade, titre du jeu et boutons.
+     * Dessine le menu principal.
+     * Si showInfo est true, dessine aussi le panneau InfoPanel par-dessus.
      *
      * @param g2 Contexte graphique
      */
     public void draw(Graphics2D g2) {
-        // Fond degrade sombre
+        // Fond degrade
         GradientPaint gradient = new GradientPaint(
                 0, 0,               new Color(10, 10, 30),
                 0, gp.screenHeight, new Color(30, 10, 60)
@@ -154,7 +176,7 @@ public class MenuScreen {
         g2.fillRect(0, 0, gp.screenWidth, gp.screenHeight);
         g2.setPaint(null);
 
-        // Titre principal avec ombre portee
+        // Titre avec ombre
         Font titleFont = gp.gameFont != null ? gp.gameFont.deriveFont(Font.BOLD, 52f)
                                              : new Font("Arial", Font.BOLD, 52);
         g2.setFont(titleFont);
@@ -164,9 +186,9 @@ public class MenuScreen {
         int    titleX = gp.screenWidth  / 2 - fm.stringWidth(title) / 2;
         int    titleY = gp.screenHeight / 2 - 170;
 
-        g2.setColor(new Color(120, 0, 0)); // ombre
+        g2.setColor(new Color(120, 0, 0));
         g2.drawString(title, titleX + 3, titleY + 3);
-        g2.setColor(new Color(220, 50, 50)); // titre
+        g2.setColor(new Color(220, 50, 50));
         g2.drawString(title, titleX, titleY);
 
         // Sous-titre
@@ -208,5 +230,10 @@ public class MenuScreen {
         g2.setFont(versionFont);
         g2.setColor(new Color(100, 100, 100));
         g2.drawString("v0.2 - Alpha", 10, gp.screenHeight - 10);
+
+        // Panneau d'infos (affiche par-dessus si showInfo est true)
+        if (showInfo) {
+            infoPanel.draw(g2);
+        }
     }
 }

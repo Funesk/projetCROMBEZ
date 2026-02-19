@@ -8,18 +8,17 @@ import java.util.List;
  * Menu pause - affiche par-dessus le jeu quand le joueur appuie sur ECHAP.
  *
  * Boutons disponibles :
- *  1. Reprendre       -> reprend la partie (PLAYING)
- *  2. Options         -> ouvre les options avec retour a PAUSED
- *  3. Infos           -> affiche les controles et infos de jeu
- *  4. Menu principal  -> retour au menu (MENU)
- *  5. Quitter         -> ferme l'application
+ *  1. Reprendre      -> reprend la partie (PLAYING)
+ *  2. Options        -> ouvre les options avec retour a PAUSED
+ *  3. Infos          -> affiche le panneau InfoPanel (stats + controles)
+ *  4. Menu principal -> retour au menu (MENU)
+ *  5. Quitter        -> ferme l'application
+ *
+ * Le panneau Infos est le meme que dans MenuScreen (classe InfoPanel partagee).
  *
  * --- Architecture listener ---
- * Aucun MouseListener n'est enregistre ici. GamePanel appelle
- * handleClick() et handleHover() UNIQUEMENT quand gameState == PAUSED.
- * Cela resout le bug ou un clic sur "Retour" dans OptionsScreen
- * etait aussi recu par PauseScreen car les deux boutons se superposaient
- * visuellement et les deux listeners etaient actifs en meme temps.
+ * Aucun MouseListener enregistre ici. GamePanel dispatche les evenements
+ * via handleClick() et handleHover() uniquement quand gameState == PAUSED.
  */
 public class PauseScreen {
 
@@ -43,12 +42,22 @@ public class PauseScreen {
     /** Index du bouton survole (-1 = aucun). */
     private int hoveredButton = -1;
 
-    /** true si l'ecran d'infos (controles) est affiche par-dessus le menu pause. */
-    private boolean showInfo = false;
-
     // Dimensions des boutons
     private static final int BTN_W = 240;
     private static final int BTN_H = 48;
+
+    // =========================================================================
+    // Panneau Infos
+    // =========================================================================
+
+    /**
+     * Panneau d'informations partage avec MenuScreen.
+     * Meme contenu : stats joueur, stats ennemis, composition des vagues.
+     */
+    private InfoPanel infoPanel;
+
+    /** true quand le panneau d'informations est affiche par-dessus la pause. */
+    private boolean showInfo = false;
 
     // =========================================================================
     // Constructeur
@@ -56,12 +65,12 @@ public class PauseScreen {
 
     /**
      * Cree le menu pause et calcule les positions des boutons.
-     * Aucun MouseListener n'est enregistre ici.
      *
      * @param gp Reference au GamePanel
      */
     public PauseScreen(GamePanel gp) {
-        this.gp = gp;
+        this.gp        = gp;
+        this.infoPanel = new InfoPanel(gp);
 
         int cx     = gp.screenWidth  / 2;
         int startY = gp.screenHeight / 2 - 110;
@@ -77,15 +86,13 @@ public class PauseScreen {
     // =========================================================================
 
     /**
-     * Traite un clic souris sur cet ecran.
-     * Appele par GamePanel UNIQUEMENT quand gameState == PAUSED.
+     * Traite un clic.
+     * Si le panneau Infos est ouvert, n'importe quel clic le ferme.
+     * Sinon, dispatch vers le bouton clique.
      *
-     * Si l'ecran d'infos est ouvert, n'importe quel clic le ferme.
-     *
-     * @param p Position du clic en coordonnees ecran
+     * @param p Position du clic
      */
     public void handleClick(Point p) {
-        // Si le panneau d'infos est affiche, un clic quelconque le ferme
         if (showInfo) {
             showInfo = false;
             return;
@@ -94,16 +101,16 @@ public class PauseScreen {
         for (int i = 0; i < buttons.size(); i++) {
             if (buttons.get(i).contains(p)) {
                 handleButton(i);
-                return; // un seul bouton par clic
+                return;
             }
         }
     }
 
     /**
      * Met a jour le bouton survole.
-     * Appele par GamePanel UNIQUEMENT quand gameState == PAUSED.
+     * Ignore le hover si le panneau Infos est ouvert.
      *
-     * @param p Position de la souris en coordonnees ecran
+     * @param p Position de la souris
      */
     public void handleHover(Point p) {
         if (showInfo) { hoveredButton = -1; return; }
@@ -118,7 +125,7 @@ public class PauseScreen {
     }
 
     /**
-     * Reinitialise l'etat interne du menu pause (ferme l'ecran d'infos si ouvert).
+     * Reinitialise l'etat interne (ferme Infos si ouvert).
      * Appele par GamePanel quand on entre dans l'etat PAUSED.
      */
     public void reset() {
@@ -133,7 +140,7 @@ public class PauseScreen {
     /**
      * Execute l'action associee au bouton clique.
      *
-     * @param index Index du bouton dans le tableau labels
+     * @param index Index dans le tableau labels
      */
     private void handleButton(int index) {
         switch (index) {
@@ -166,22 +173,22 @@ public class PauseScreen {
 
     /**
      * Dessine le menu pause par-dessus le jeu.
-     * Fond semi-transparent, panneau central avec boutons.
-     * Si showInfo est true, dessine le panneau d'informations a la place.
+     * Si showInfo est true, affiche le panneau InfoPanel a la place des boutons.
      *
      * @param g2 Contexte graphique
      */
     public void draw(Graphics2D g2) {
-        // Overlay sombre par-dessus le jeu
+        // Overlay sombre par-dessus le jeu fige
         g2.setColor(new Color(0, 0, 0, 150));
         g2.fillRect(0, 0, gp.screenWidth, gp.screenHeight);
 
+        // Panneau Infos (prend tout l'ecran si actif)
         if (showInfo) {
-            drawInfoPanel(g2);
+            infoPanel.draw(g2);
             return;
         }
 
-        // Panneau central
+        // Panneau central de pause
         int panelW = BTN_W + 60;
         int panelH = labels.length * 60 + 80;
         int panelX = gp.screenWidth  / 2 - panelW / 2;
@@ -213,7 +220,7 @@ public class PauseScreen {
             Rectangle btn     = buttons.get(i);
             boolean   hovered = (i == hoveredButton);
 
-            // Couleur speciale pour "Quitter" (rouge)
+            // Couleur rouge pour "Quitter"
             Color bgNormal  = (i == 4) ? new Color(80, 20, 20)  : new Color(40, 40, 70);
             Color bgHovered = (i == 4) ? new Color(160, 30, 30) : new Color(80, 80, 130);
 
@@ -231,7 +238,7 @@ public class PauseScreen {
             g2.drawString(labels[i], tx, ty);
         }
 
-        // Hint en bas du panneau
+        // Hint ECHAP
         Font hintFont = gp.gameFont != null ? gp.gameFont.deriveFont(12f)
                                             : new Font("Arial", Font.PLAIN, 12);
         g2.setFont(hintFont);
@@ -239,63 +246,6 @@ public class PauseScreen {
         fm = g2.getFontMetrics();
         String hint = "ECHAP pour reprendre";
         g2.drawString(hint, gp.screenWidth / 2 - fm.stringWidth(hint) / 2,
-                      panelY + panelH + 22);
-    }
-
-    /**
-     * Dessine le panneau d'informations sur les controles et les mecaniques.
-     * Affiche quand l'utilisateur clique sur "Infos".
-     * Un clic quelconque ferme ce panneau.
-     *
-     * @param g2 Contexte graphique
-     */
-    private void drawInfoPanel(Graphics2D g2) {
-        int panelW = 500;
-        int panelH = 400;
-        int panelX = gp.screenWidth  / 2 - panelW / 2;
-        int panelY = gp.screenHeight / 2 - panelH / 2;
-
-        g2.setColor(new Color(10, 10, 30, 240));
-        g2.fillRoundRect(panelX, panelY, panelW, panelH, 20, 20);
-        g2.setColor(new Color(100, 100, 180));
-        g2.setStroke(new BasicStroke(2f));
-        g2.drawRoundRect(panelX, panelY, panelW, panelH, 20, 20);
-        g2.setStroke(new BasicStroke(1f));
-
-        // Titre
-        Font titleFont = gp.gameFont != null ? gp.gameFont.deriveFont(Font.BOLD, 24f)
-                                             : new Font("Arial", Font.BOLD, 24);
-        g2.setFont(titleFont);
-        g2.setColor(Color.white);
-        FontMetrics fm = g2.getFontMetrics();
-        String t = "Controles & Infos";
-        g2.drawString(t, gp.screenWidth / 2 - fm.stringWidth(t) / 2, panelY + 40);
-
-        // Lignes de contenu
-        Font infoFont = gp.gameFont != null ? gp.gameFont.deriveFont(15f)
-                                            : new Font("Arial", Font.PLAIN, 15);
-        g2.setFont(infoFont);
-        g2.setColor(new Color(200, 200, 230));
-
-        String[] lines = {
-            "  Deplacement",
-            "    Z / Fleche haut    ->  Monter",
-            "    S / Fleche bas     ->  Descendre",
-            "    Q / Fleche gauche  ->  Gauche",
-            "    D / Fleche droite  ->  Droite",
-            "",
-            "  Mecaniques",
-            "    Attaque  : automatique sur le plus proche",
-            "    Vagues   : 4 vagues + 1 boss final",
-            "    ECHAP    : ouvrir / fermer la pause",
-            "",
-            "         Cliquer pour fermer"
-        };
-
-        int lineY = panelY + 75;
-        for (String line : lines) {
-            g2.drawString(line, panelX + 15, lineY);
-            lineY += 23;
-        }
+                      panelY + panelH - 12);
     }
 }
