@@ -5,13 +5,16 @@ import javax.swing.SwingUtilities;
 
 /**
  * Singleton centralisant tous les parametres du jeu.
- * Accessible depuis n'importe quelle classe via GameSettings.getInstance().
+ *
+ * Chaque setter qui modifie un parametre appelle automatiquement
+ * SaveManager.save() pour persister le changement immediatement.
+ * Ainsi, les options sont toujours sauvegardees sans action explicite.
  *
  * Contient :
  *  - La difficulte choisie par le joueur
  *  - L'affichage ou non de la portee du joueur
  *  - Le mode plein ecran
- *  - Des references a la JFrame et au GamePanel pour le toggle plein ecran
+ *  - Des references a la JFrame et au GamePanel
  */
 public class GameSettings {
 
@@ -19,14 +22,10 @@ public class GameSettings {
     // Singleton
     // =========================================================================
 
-    /** Instance unique (pattern Singleton). */
     private static GameSettings instance;
 
-    /** Retourne l'instance unique, la cree si elle n'existe pas encore. */
     public static GameSettings getInstance() {
-        if (instance == null) {
-            instance = new GameSettings();
-        }
+        if (instance == null) instance = new GameSettings();
         return instance;
     }
 
@@ -34,33 +33,32 @@ public class GameSettings {
     // Parametres
     // =========================================================================
 
-    /** Difficulte selectionnee par le joueur (par defaut : Normal). */
+    /** Difficulte selectionnee par le joueur. */
     private DifficultyLevel difficulty = DifficultyLevel.NORMAL;
 
-    /** Afficher ou masquer le cercle de portee autour du joueur. */
+    /** Afficher le cercle de portee autour du joueur. */
     private boolean showPlayerRange = true;
 
-    /** Indique si le jeu est actuellement en mode plein ecran. */
+    /** Mode plein ecran actif. */
     private boolean fullscreen = false;
 
     // =========================================================================
     // References externes
     // =========================================================================
 
-    /**
-     * Reference a la fenetre principale.
-     * Doit etre fournie via setWindow() dans Main avant tout toggle.
-     */
+    /** Fenetre principale (necessaire pour toggleFullscreen). */
     private JFrame window;
 
     /**
-     * Reference au GamePanel.
-     *
+     * Panneau de jeu principal.
+     * Utilise pour :
+     *  1. Redonner le focus clavier apres toggleFullscreen.
+     *  2. Acceder aux stats joueur dans SaveManager.save().
      */
     private GamePanel gamePanel;
 
     // =========================================================================
-    // Constructeur prive (Singleton)
+    // Constructeur prive
     // =========================================================================
 
     private GameSettings() {}
@@ -69,27 +67,40 @@ public class GameSettings {
     // Getters / Setters
     // =========================================================================
 
-    public DifficultyLevel getDifficulty()        { return difficulty; }
-    public void setDifficulty(DifficultyLevel d)  { this.difficulty = d; }
+    public DifficultyLevel getDifficulty() { return difficulty; }
 
-    public boolean isShowPlayerRange()            { return showPlayerRange; }
-    public void setShowPlayerRange(boolean show)  { this.showPlayerRange = show; }
+    /**
+     * Change la difficulte et sauvegarde immediatement.
+     * Appele par DifficultyScreen avant de lancer une partie.
+     */
+    public void setDifficulty(DifficultyLevel d) {
+        this.difficulty = d;
+        saveIfReady();
+    }
 
-    public boolean isFullscreen()                 { return fullscreen; }
+    public boolean isShowPlayerRange() { return showPlayerRange; }
 
-    /** Enregistre la JFrame. A appeler une fois dans Main. */
+    /**
+     * Active/desactive l'affichage de la portee et sauvegarde immediatement.
+     * Appele par OptionsScreen.
+     */
+    public void setShowPlayerRange(boolean show) {
+        this.showPlayerRange = show;
+        saveIfReady();
+    }
+
+    public boolean isFullscreen() { return fullscreen; }
+
     public void setWindow(JFrame w)        { this.window    = w; }
-
-    /** Enregistre le GamePanel. A appeler une fois dans Main. */
     public void setGamePanel(GamePanel gp) { this.gamePanel = gp; }
 
     // =========================================================================
-    // Multiplicateurs de difficulte (utilises par EnemyManager)
+    // Multiplicateurs de difficulte
     // =========================================================================
 
     /**
-     * Multiplicateur de HP des ennemis selon la difficulte.
-     * EASY -> 0.7x | NORMAL -> 1.0x | HARD -> 1.5x
+     * Multiplicateur de HP ennemis.
+     * EASY -> 0.7 | NORMAL -> 1.0 | HARD -> 1.5
      */
     public float getHpMultiplier() {
         switch (difficulty) {
@@ -100,8 +111,8 @@ public class GameSettings {
     }
 
     /**
-     * Multiplicateur de degats des ennemis.
-     * EASY -> 0.6x | NORMAL -> 1.0x | HARD -> 1.4x
+     * Multiplicateur de degats ennemis.
+     * EASY -> 0.6 | NORMAL -> 1.0 | HARD -> 1.4
      */
     public float getDamageMultiplier() {
         switch (difficulty) {
@@ -113,7 +124,7 @@ public class GameSettings {
 
     /**
      * Multiplicateur du nombre d'ennemis par vague.
-     * EASY -> 0.6x | NORMAL -> 1.0x | HARD -> 1.5x
+     * EASY -> 0.6 | NORMAL -> 1.0 | HARD -> 1.5
      */
     public float getWaveSizeMultiplier() {
         switch (difficulty) {
@@ -128,35 +139,51 @@ public class GameSettings {
     // =========================================================================
 
     /**
-     * Bascule entre mode plein ecran et mode fenetre.
+     * Bascule plein ecran / fenetre.
      *
+     * Apres le cycle dispose/setVisible (obligatoire pour changer la decoration),
+     * restitue le focus clavier via invokeLater.
+     * Sauvegarde le nouvel etat apres le toggle.
      */
     public void toggleFullscreen() {
         if (window == null) return;
 
         fullscreen = !fullscreen;
 
-        // Obligatoire avant setUndecorated sur une fenetre deja visible
         window.dispose();
-
         if (fullscreen) {
             window.setUndecorated(true);
             window.setExtendedState(JFrame.MAXIMIZED_BOTH);
         } else {
             window.setUndecorated(false);
             window.setExtendedState(JFrame.NORMAL);
-            // Reajuste la taille de la fenetre a la taille preferee du GamePanel
             window.pack();
             window.setLocationRelativeTo(null);
         }
-
         window.setVisible(true);
 
-        // Redonner le focus clavier au GamePanel apres que la fenetre
-        // soit reellement rendue et dans un etat focusable.
-        // invokeLater garantit que cet appel se fait APRES le repaint initial.
+        // Focus clavier restaure apres que la fenetre soit reellement affichee
         if (gamePanel != null) {
             SwingUtilities.invokeLater(() -> gamePanel.requestFocusInWindow());
+        }
+
+        // Sauvegarde le nouvel etat plein ecran
+        saveIfReady();
+    }
+
+    // =========================================================================
+    // Sauvegarde
+    // =========================================================================
+
+    /**
+     * Declenche une sauvegarde si le GamePanel est disponible.
+     *
+     * Protege contre les appels trop precoces (pendant le chargement
+     * initial, avant que gamePanel soit assigne).
+     */
+    private void saveIfReady() {
+        if (gamePanel != null) {
+            SaveManager.save(gamePanel);
         }
     }
 }
