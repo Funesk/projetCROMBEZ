@@ -91,6 +91,12 @@ public class GameSettings {
 
     public boolean isFullscreen() { return fullscreen; }
 
+    /**
+     * Modifie le flag fullscreen sans declencher de toggle ni de sauvegarde.
+     * Utilise uniquement par Main au demarrage pour preparer la restauration.
+     */
+    public void setFullscreenFlag(boolean value) { this.fullscreen = value; }
+
     public void setWindow(JFrame w)        { this.window    = w; }
     public void setGamePanel(GamePanel gp) { this.gamePanel = gp; }
 

@@ -79,9 +79,19 @@ public class Main {
             }
         });
 
-        // Affichage et demarrage
+        // Restauration du plein ecran si c'etait actif lors de la derniere session.
+        // DOIT etre fait apres setVisible() : la fenetre doit etre affichee
+        // pour que toggleFullscreen() puisse appeler dispose()/setVisible()
+        // et que requestFocusInWindow() fonctionne ensuite.
+        // GameSettings.isFullscreen() contient la valeur lue par SaveManager.load().
         window.setLocationRelativeTo(null);
         window.setVisible(true);
+
+        if (GameSettings.getInstance().isFullscreen()) {
+            // On remet isFullscreen a false car toggleFullscreen() va l'inverser
+            GameSettings.getInstance().setFullscreenFlag(false);
+            GameSettings.getInstance().toggleFullscreen();
+        }
 
         gamePanel.startGameThread();
     }

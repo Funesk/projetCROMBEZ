@@ -190,6 +190,11 @@ public class PauseScreen {
                 break;
 
             case 5: // Quitter
+                // On ne marque PAS hasActiveGame = true ici :
+                // apres un vrai redemarrage, l'etat en memoire est perdu
+                // (position ennemis, vague en cours, etc.) et on ne peut pas
+                // le restaurer sans serialisation complete. Les stats/upgrades/gold
+                // sont sauvegardes et persistent.
                 SaveManager.save(gp);
                 System.exit(0);
                 break;
@@ -239,7 +244,7 @@ public class PauseScreen {
         g2.setColor(Color.white);
         FontMetrics fm = g2.getFontMetrics();
         String title = "PAUSE";
-        g2.drawString(title, gp.screenWidth / 2 - fm.stringWidth(title) / 2, panelY + 30);
+        g2.drawString(title, gp.screenWidth / 2 - fm.stringWidth(title) / 2, panelY + 38);
 
         // Boutons
         Font btnFont = gp.gameFont != null ? gp.gameFont.deriveFont(17f)
